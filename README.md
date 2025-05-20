@@ -1,0 +1,659 @@
+#pillars
+
+let sand = [];
+let doorOpen = false;
+
+// Box dimensions
+const boxH = 300;
+const boxW = 400;
+const boxD = 150;
+
+// Sand parameters
+const maxSand = 600;
+const sandRadius = 4;
+
+// Pillar parameters
+const pillarLen = 150;
+const pillarRad = 20;
+let pillarY;           // center‐Y of pillar
+let pillarAngle = 0;   // 0 = horizontal, PI/2 = vertical
+let pivoting = false;
+
+function setup() {
+  createCanvas(800, 600, WEBGL);
+  // Compute sand fill height: just up to the bottom of the pillar
+  const sandHeight = boxH/2 - (pillarRad * 2 + 5);
+  // Position pillar: horizontal, bottom edge sitting right at sand top
+  pillarY = -boxH/2 + sandHeight + pillarRad*2 + 5;
+
+  // Pre-fill the sand array
+  for (let i = 0; i < maxSand; i++) {
+    let x = random(-boxW/2 + 30, boxW/2 - 30);
+    let z = random(-boxD/2 + 20, boxD/2 - 20);
+    let y = map(random(), 0, 1, -boxH/2 + sandRadius, -boxH/2 + sandHeight);
+    sand.push({ x, y, z, vx: 0, vy: 0, vz: 0 });
+  }
+}
+
+function draw() {
+  background(240);
+  orbitControl();
+  lights();
+
+  // --- Draw transparent box ---
+  noFill(); stroke(0);
+  push(); box(boxW, boxH, boxD); pop();
+
+  // --- Draw base ---
+  noStroke(); fill(100);
+  push();
+    translate(0, boxH/2 + 5, 0);
+    box(boxW, 10, boxD);
+  pop();
+
+  // --- Draw door ---
+  if (!doorOpen) {
+    fill(150);
+    push();
+      translate(-boxW/2 + 10, boxH/2 - 10, boxD/2 + 1);
+      box(20, 20, 2);
+    pop();
+  }
+
+  // --- Update & draw sand ---
+  fill(194,178,128); noStroke();
+  for (let i = sand.length - 1; i >= 0; i--) {
+    const s = sand[i];
+    // gravity
+    s.vy += 0.2;
+
+    // if door open and sand at exit, spill out
+    if (doorOpen &&
+        s.x < -boxW/2 + 40 &&
+        s.y > boxH/2 - 40) {
+      s.vx = -random(0.3, 0.6);
+      s.vz += random(-0.05, 0.05);
+    } else {
+      s.vx *= 0.95;
+      s.vz *= 0.95;
+    }
+
+    // apply velocity
+    s.x += s.vx;
+    s.y += s.vy;
+    s.z += s.vz;
+
+    // collide with base
+    if (s.y > boxH/2 - sandRadius) {
+      s.y = boxH/2 - sandRadius;
+      s.vy = 0;
+    }
+
+    // remove if fully spilled out
+    if (doorOpen && s.x < -boxW/2 - 50) {
+      sand.splice(i, 1);
+      continue;
+    }
+
+    push();
+      translate(s.x, s.y, s.z);
+      sphere(sandRadius);
+    pop();
+  }
+
+  // --- Pillar drop & pivot logic ---
+  const baseY = boxH/2 - sandRadius;
+  // compute left end Y of pillar center + sin(angle)*(pillarLen/2)
+  const leftEndY = pillarY + sin(pillarAngle)*(pillarLen/2);
+
+  // drop until left end reaches baseY, then start pivot
+  if (doorOpen && !pivoting) {
+    if (leftEndY > baseY) {
+      pillarY += 0.3;
+    } else {
+      pivoting = true;
+    }
+  }
+  // pivot from 0 → PI/2
+  if (pivoting && pillarAngle < HALF_PI) {
+    pillarAngle += 0.01;
+  }
+
+  // --- Draw pillar (pivot about left end) ---
+  fill(180,0,0,200);
+  push();
+    // move to left-end pivot
+    translate(-pillarLen/2, pillarY, 0);
+    rotateZ(pillarAngle);
+    // center cylinder
+    translate(pillarLen/2, 0, 0);
+    // align along X
+    rotateZ(HALF_PI);
+    cylinder(pillarRad, pillarLen);
+  pop();
+}o
+
+function keyPressed() {
+  if (key === 'o' || key === 'O') {
+    doorOpen = true;
+  }
+}
+
+
+
+
+
+
+
+
+
+// Enhanced sand and physics-driven pillar in p5.js (WEBGL)
+
+let particles = [];
+let doorOpen = false;
+let fillHeight;
+
+// Box dimensions
+const boxH = 300;
+const boxW = 400;
+const boxD = 150;
+
+// Particle parameters
+const particleRadius = 4;
+const maxParticles = 500;  // increased sand for fuller volume
+
+// Pillar parameters
+const pillarLen = 150;
+const pillarRad = 20;
+let pillarY;
+let pillarVY = 0;          // vertical velocity for gravity
+let pillarAngle = 0;
+let pivoting = false;
+
+let halfBtn, fullBtn;
+
+function setup() {
+  createCanvas(800, 600, WEBGL);
+  frameRate(60);
+
+  // Buttons to choose fill amount
+  halfBtn = createButton('Half Fill');
+  halfBtn.position(10, 10);
+  halfBtn.mousePressed(() => regenerateParticles(boxH / 2));
+
+  fullBtn = createButton('Full Fill');
+  fullBtn.position(100, 10);
+  fullBtn.mousePressed(() => regenerateParticles(boxH - pillarLen - 10));
+
+  // Start half fill
+  regenerateParticles(boxH / 2);
+}
+
+function regenerateParticles(h) {
+  fillHeight = h;
+  particles = [];
+  pillarAngle = 0;
+  pivoting = false;
+  doorOpen = false;
+  pillarVY = 0;
+
+  // Generate sand particles up to fillHeight
+  const startY = -boxH / 2 + particleRadius;
+  for (let i = 0; i < maxParticles; i++) {
+    let x = random(-boxW / 2 + particleRadius, boxW / 2 - particleRadius);
+    let z = random(-boxD / 2 + particleRadius, boxD / 2 - particleRadius);
+    let y = random(startY, startY + fillHeight);
+    particles.push({ x, y, z, vy: 0 });
+  }
+
+  // Place pillar above sand
+  pillarY = startY + fillHeight + pillarLen / 2;
+}
+
+function draw() {
+  background(240);
+  orbitControl();
+  lights();
+
+  // Draw box
+  noFill(); stroke(0);
+  push(); box(boxW, boxH, boxD); pop();
+
+  // Draw base
+  noStroke(); fill(100);
+  push(); translate(0, boxH / 2 + 5, 0); box(boxW, 10, boxD); pop();
+
+  // Draw door
+  if (!doorOpen) {
+    fill(150);
+    push(); translate(-boxW / 2 + 10, boxH / 2 - 10, boxD / 2 + 1); box(20, 20, 2); pop();
+  }
+
+  // Update and draw sand
+  fill(194, 178, 128); noStroke();
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    // Apply gravity
+    p.vy += 0.5;
+    p.y += p.vy;
+
+    // Floor collision
+    if (p.y > boxH / 2 - particleRadius) {
+      p.y = boxH / 2 - particleRadius;
+      p.vy = 0;
+    }
+
+    // Sand outflow when door open
+    if (doorOpen && p.x < -boxW / 2 + 20 && p.y > boxH / 2 - 40) {
+      p.x -= 3;
+    }
+
+    // Remove spilled particles
+    if (doorOpen && p.x < -boxW / 2 - 20) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    // Draw particle
+    push(); translate(p.x, p.y, p.z); sphere(particleRadius); pop();
+  }
+
+  // Pillar physics: gravity and pivot
+  if (doorOpen && !pivoting) {
+    pillarVY += 0.6;
+    pillarY += pillarVY;
+    // Detect when lower end hits sand base
+    let sandTopY = boxH / 2 - particleRadius;
+    let lowerEndY = pillarY + cos(pillarAngle) * (pillarLen / 2);
+    if (lowerEndY >= sandTopY) {
+      pillarY = sandTopY - cos(pillarAngle) * (pillarLen / 2);
+      pillarVY = 0;
+      pivoting = true;
+    }
+  }
+
+  // Pivot to vertical
+  if (pivoting && pillarAngle < HALF_PI) {
+    pillarAngle += 0.05;
+  }
+
+  // Draw pillar (pivot about its left end)
+  fill(180, 0, 0, 200);
+  push();
+    translate(-pillarLen / 2, pillarY, 0);
+    rotateZ(pillarAngle);
+    translate(pillarLen / 2, 0, 0);
+    rotateZ(HALF_PI);
+    cylinder(pillarRad, pillarLen);
+  pop();
+}
+
+function keyPressed() {
+  if (key === 'o' || key === 'O') doorOpen = true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let particles = [];
+let doorOpen = false;
+let fillHeight;
+
+const boxH = 300;
+const boxW = 400;
+const boxD = 150;
+
+const particleRadius = 4;
+const maxParticles = 1800;  // Enough for full fill
+
+// Pillar (cylinder)
+const pillarLen = 150;
+const pillarRad = 20;
+let pillarY;
+let pillarVY = 0;
+let pillarAngle = 0;
+let pivoting = false;
+
+function setup() {
+  createCanvas(800, 600, WEBGL);
+  frameRate(60);
+  regenerateParticles(boxH - 2 * particleRadius);
+}
+
+function regenerateParticles(h) {
+  fillHeight = h;
+  particles = [];
+  doorOpen = false;
+  pivoting = false;
+  pillarAngle = 0;
+  pillarVY = 0;
+
+  let startY = -boxH / 2 + particleRadius;
+
+  for (let i = 0; i < maxParticles; i++) {
+    let x = random(-boxW / 2 + particleRadius, boxW / 2 - particleRadius);
+    let z = random(-boxD / 2 + particleRadius, boxD / 2 - particleRadius);
+    let y = random(startY, startY + fillHeight);
+    particles.push({ x, y, z, vy: 0 });
+  }
+
+  // Place pillar on top of the sand
+  pillarY = startY + fillHeight + pillarLen / 2;
+}
+
+function draw() {
+  background(230);
+  orbitControl();
+  lights();
+
+  drawBox();
+  drawDoor();
+  updateAndDrawParticles();
+  updateAndDrawPillar();
+}
+
+function drawBox() {
+  noFill(); stroke(0);
+  push(); box(boxW, boxH, boxD); pop();
+
+  noStroke(); fill(100);
+  push(); translate(0, boxH / 2 + 5, 0); box(boxW, 10, boxD); pop();
+}
+
+function drawDoor() {
+  if (!doorOpen) {
+    fill(150);
+    push(); translate(-boxW / 2 + 10, boxH / 2 - 10, boxD / 2 + 1); box(20, 20, 2); pop();
+  }
+}
+
+function updateAndDrawParticles() {
+  fill(194, 178, 128); noStroke();
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+
+    // Gravity
+    p.vy += 0.5;
+    p.y += p.vy;
+
+    // Floor collision
+    if (p.y > boxH / 2 - particleRadius) {
+      p.y = boxH / 2 - particleRadius;
+      p.vy = 0;
+    }
+
+    // Sand stacking (basic)
+    for (let j = 0; j < particles.length; j++) {
+      if (i !== j) {
+        let p2 = particles[j];
+        let dx = p.x - p2.x;
+        let dz = p.z - p2.z;
+        let distXZ = sqrt(dx * dx + dz * dz);
+        let dy = p2.y - p.y;
+        if (distXZ < particleRadius * 1.5 && dy > -particleRadius * 2 && dy < 0) {
+          p.y = p2.y - particleRadius * 2;
+          p.vy = 0;
+          p.x += random(-0.3, 0.3);
+          p.z += random(-0.3, 0.3);
+          break;
+        }
+      }
+    }
+
+    // Outflow through door
+    if (doorOpen && p.x < -boxW / 2 + 20 && p.y > boxH / 2 - 40) {
+      p.x -= 3;
+    }
+
+    // Remove if completely out
+    if (doorOpen && p.x < -boxW / 2 - 20) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    push(); translate(p.x, p.y, p.z); sphere(particleRadius); pop();
+  }
+}
+
+function updateAndDrawPillar() {
+  if (doorOpen && !pivoting) {
+    pillarVY += 0.6;
+    pillarY += pillarVY;
+
+    let sandTopY = boxH / 2 - particleRadius;
+    let lowerEndY = pillarY + cos(pillarAngle) * (pillarLen / 2);
+    if (lowerEndY >= sandTopY) {
+      pillarY = sandTopY - cos(pillarAngle) * (pillarLen / 2);
+      pillarVY = 0;
+      pivoting = true;
+    }
+  }
+
+  if (pivoting && pillarAngle < HALF_PI) {
+    pillarAngle += 0.05;
+  }
+
+  fill(180, 0, 0, 220);
+  push();
+  translate(-pillarLen / 2, pillarY, 0);
+  rotateZ(pillarAngle);
+  translate(pillarLen / 2, 0, 0);
+  rotateZ(HALF_PI);
+  cylinder(pillarRad, pillarLen);
+  pop();
+}
+
+function keyPressed() {
+  if (key === 'o' || key === 'O') {
+    doorOpen = true;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+// p5.js – Sand-Fill Pillar Erection Simulation
+
+// Simulation parameters
+const boxW = 400;
+const boxH = 300;
+const boxD = 150;
+const particleRadius = 4;
+const maxParticles = 1000;
+const gravity = 0.5;
+
+// Pillar parameters
+const pillarLen = 150;
+const pillarRad = 20;
+let pillar;
+
+// Particle container
+let particles = [];
+let doorOpen = false;
+
+function setup() {
+  createCanvas(800, 600, WEBGL);
+  frameRate(60);
+
+  // Initialize pillar as rigid body
+  pillar = {
+    y: -boxH/2 + particleRadius + (boxH - particleRadius*2) + pillarLen/2,
+    vy: 0,
+    angle: 0,
+    pivoting: false
+  };
+
+  // Generate sand particles
+  generateParticles(boxH - pillarLen - 10);
+}
+
+function generateParticles(fillHeight) {
+  particles = [];
+  doorOpen = false;
+  pillar.vy = 0;
+  pillar.angle = 0;
+  pillar.pivoting = false;
+
+  const startY = -boxH / 2 + particleRadius;
+  for (let i = 0; i < maxParticles; i++) {
+    let x = random(-boxW/2 + particleRadius, boxW/2 - particleRadius);
+    let z = random(-boxD/2 + particleRadius, boxD/2 - particleRadius);
+    let y = random(startY, startY + fillHeight);
+    particles.push({ x, y, z, vy: 0 });
+  }
+
+  // Place pillar atop the sand
+  pillar.y = startY + fillHeight + pillarLen/2;
+}
+
+function draw() {
+  background(240);
+  orbitControl();
+  lights();
+
+  drawContainer();
+  drawDoor();
+  updateParticles();
+  updatePillar();
+  drawPillar();
+}
+
+function drawContainer() {
+  noFill(); stroke(0);
+  box(boxW, boxH, boxD);
+  noStroke(); fill(100);
+  push(); translate(0, boxH/2 + 5, 0);
+  box(boxW, 10, boxD);
+  pop();
+}
+
+function drawDoor() {
+  if (!doorOpen) {
+    fill(150);
+    push();
+      translate(-boxW/2 + 10, boxH/2 - 10, boxD/2 + 1);
+      box(20, 20, 2);
+    pop();
+  }
+}
+
+function updateParticles() {
+  fill(194, 178, 128);
+  noStroke();
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    // Gravity
+    p.vy += gravity;
+    p.y += p.vy;
+
+    // Floor collision
+    if (p.y > boxH/2 - particleRadius) {
+      p.y = boxH/2 - particleRadius;
+      p.vy = 0;
+    }
+
+    // Outflow when door is open
+    if (doorOpen && p.x < -boxW/2 + 20 && p.y > boxH/2 - 40) {
+      p.x -= 3;
+    }
+
+    // Remove spilled particles
+    if (doorOpen && p.x < -boxW/2 - 20) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    // Draw particle
+    push();
+      translate(p.x, p.y, p.z);
+      sphere(particleRadius);
+    pop();
+  }
+}
+
+function updatePillar() {
+  if (doorOpen && !pillar.pivoting) {
+    // Apply gravity translation
+    pillar.vy += gravity;
+    pillar.y += pillar.vy;
+
+    // Detect contact with sand top
+    let sandTopY = boxH/2 - particleRadius;
+    let lowerEndY = pillar.y + cos(pillar.angle) * (pillarLen/2);
+    if (lowerEndY >= sandTopY) {
+      pillar.y = sandTopY - cos(pillar.angle) * (pillarLen/2);
+      pillar.vy = 0;
+      pillar.pivoting = true;
+    }
+  }
+
+  // Pivot to vertical
+  if (pillar.pivoting && pillar.angle < HALF_PI) {
+    pillar.angle += 0.02;
+  }
+}
+
+function drawPillar() {
+  fill(180, 0, 0, 200);
+  push();
+    translate(-pillarLen/2, pillar.y, 0);
+    rotateZ(pillar.angle);
+    translate(pillarLen/2, 0, 0);
+    rotateZ(HALF_PI);
+    cylinder(pillarRad, pillarLen);
+  pop();
+}
+
+function keyPressed() {
+  if (key === 'o' || key === 'O') doorOpen = true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
